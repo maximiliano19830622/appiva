@@ -1,0 +1,315 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calibrar Layout</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .cal-wrap { position: relative; max-width: 980px; margin: 16px auto; }
+    .cal-layout { display:flex; gap:12px; align-items:flex-start; max-width:980px; margin: 0 auto; }
+    .cal-canvas { position: relative; border: 1px solid var(--input-border); background: #fff; width: 100%; }
+    .cal-canvas img { display: block; width: 100%; height: auto; }
+    .cal-field { position: absolute; background: rgba(255, 230, 0, 0.92); color: #000; border: 1px solid #cc0; border-radius: 4px; padding: 2px 6px; font-size: 14px; cursor: move; user-select: none; z-index: 100; }
+    .cal-grid { position: absolute; inset: 0; pointer-events: none; background-size: 40px 40px; background-image: linear-gradient(to right, rgba(0,0,0,0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.08) 1px, transparent 1px); z-index: 50; }
+    .cal-toolbar { display:flex; gap:10px; align-items:center; justify-content:space-between; margin: 12px auto; max-width: 980px; }
+    .cal-toolbar .left { display:flex; gap:10px; align-items:center; }
+    .cal-toolbar .right { display:flex; gap:10px; align-items:center; }
+    .cal-note { font-size: 14px; color: var(--muted); }
+    .cal-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: rgba(0,0,0,.06); padding: 4px 6px; border-radius: 4px; }
+    .cal-panel { width: 240px; border: 1px solid var(--input-border); border-radius: 8px; padding: 10px; background: #fff; position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+    .cal-panel h3 { margin: 0 0 6px 0; font-size: 16px; display:flex; justify-content:space-between; align-items:center; }
+    .cal-panel h3 .badge { font-size: 12px; background:#eee; border-radius:10px; padding:2px 6px; }
+    .cal-panel .actions { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+    .cal-panel .actions button { font-size: 12px; padding: 4px 6px; }
+    .cal-panel .list { display:flex; flex-direction:column; gap:4px; }
+    .cal-panel label { display:flex; gap:8px; align-items:center; font-size: 13px; }
+    .status-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    .status-ok { background:#2ecc71; }
+    .status-pending { background:#e74c3c; }
+    .cal-field.auto { background: rgba(255, 120, 120, 0.9); border-color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">Volver</a>
+      <a href="/static/proveedores.html">Gestionar Proveedores</a>
+      <a href="/static/certificados.html">Certificados</a>
+    </nav>
+    <h1>Calibrar Layout</h1>
+  </header>
+  <div class="cal-toolbar">
+    <div class="left">
+      <button id="btnReset">Reiniciar a detectado</button>
+      <button id="btnSave">Guardar CSV</button>
+      <button id="btnStackAll">Apilar todos a la izquierda</button>
+    </div>
+    <div class="right">
+      <span class="cal-note">Arrastra los campos sobre el fondo. Grilla visual ~10 mm.</span>
+    </div>
+  </div>
+
+  <div class="cal-wrap">
+    <div class="cal-layout">
+      <aside class="cal-panel">
+        <h3>Campos <span id="pendingCount" class="badge">0 pendientes</span></h3>
+        <div class="actions">
+          <button id="btnShowAll" type="button">Mostrar todos</button>
+          <button id="btnHideAll" type="button">Ocultar todos</button>
+          <button id="btnStackVisible" type="button">Apilar visibles</button>
+          <button id="btnMarkPending" type="button">Marcar todos pendientes</button>
+          <button id="btnClearCsv" type="button">Limpiar CSV</button>
+        </div>
+        <div id="fieldList" class="list"></div>
+      </aside>
+      <div id="canvas" class="cal-canvas">
+        <img id="bg" alt="Fondo" src="/assets/background_letter.png" />
+        <div class="cal-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="testbar" style="max-width:980px;margin:8px auto 16px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
+    <label>Certificado Nº <input id="calCertNum" type="text" style="width:110px"></label>
+    <label><input id="calNoBg" type="checkbox"> Sin fondo</label>
+    <label><input id="calGrid" type="checkbox" checked> Grilla</label>
+    <label>offX (mm) <input id="calOffX" type="number" step="0.5" value="0" style="width:80px"></label>
+    <label>offY (mm) <input id="calOffY" type="number" step="0.5" value="0" style="width:80px"></label>
+    <label>scaleX <input id="calSX" type="number" step="0.01" value="1" style="width:70px"></label>
+    <label>scaleY <input id="calSY" type="number" step="0.01" value="1" style="width:70px"></label>
+    <button id="calViewPdfkit" type="button">Ver PDF (PDFKit)</button>
+    <button id="calViewPdflib" type="button">Ver PDF (pdf-lib)</button>
+  </div>
+
+  <script>
+    (async () => {
+      const d = document; const $ = (s)=>d.querySelector(s);
+      const canvas = $('#canvas'); const bg = $('#bg');
+      const fields = ['numero','numero2','fecha_cert','numero_fact','fecha_fact','proveedor_nombre','proveedor_direccion','proveedor_ciudad','proveedor_cuit','proveedor_codigo_postal','total_base','total_abonado','total_iva'];
+      const visible = Object.fromEntries(fields.map(k => [k, true]));
+      let layout = {}; // mm positions
+      let basePx = { w: 2550, h: 3300 }; // default fallback
+
+      // Try alternate backgrounds if not found
+      const candidates = ['/assets/background_letter.png','/assets/background_letter.jpg','/assets/background.png','/assets/background.jpg','/assets/background_a4.png'];
+      for (const src of candidates) { try { await fetch(src, { method: 'HEAD' }); bg.src = src; break; } catch {} }
+
+      await new Promise(r => { if (bg.complete) r(); else bg.onload = r; });
+      basePx = { w: bg.naturalWidth || basePx.w, h: bg.naturalHeight || basePx.h };
+
+      const pageMm = { w: 215.9, h: 279.4 }; // LETTER
+      function mmToPx(mm, axis){
+        const rect = bg.getBoundingClientRect(); const size = (axis==='x') ? rect.width : rect.height; const denom = (axis==='x')? pageMm.w : pageMm.h; return (Number(mm)||0) * (size / denom);
+      }
+      function pxToMm(px, axis){
+        const rect = bg.getBoundingClientRect(); const size = (axis==='x') ? rect.width : rect.height; const denom = (axis==='x')? pageMm.w : pageMm.h; if (!size) return 0; return (Number(px)||0) * (denom / size);
+      }
+
+      // Ensure layout has all fields and visible defaults
+      function ensureFieldsCompleteness() {
+        const startXmm = 8; // left gutter in mm
+        const stepYmm = 12; // vertical spacing in mm
+        const tolX = 1;     // ~1mm tolerance
+        const tolY = 2;     // ~2mm tolerance
+        const isStackHeuristic = (f) => {
+          if (!f) return true;
+          const nearLeft = Math.abs((Number(f.x)||0) - startXmm) <= tolX;
+          const k = Math.round(((Number(f.y)||0) - 12) / stepYmm);
+          const yApprox = 12 + k * stepYmm;
+          const nearRow = Math.abs(((Number(f.y)||0) - yApprox)) <= tolY;
+          return nearLeft && nearRow;
+        };
+        let idxStack = 0; const taken = new Set();
+        fields.forEach((k) => {
+          const f = layout[k];
+          if (!f || typeof f.x !== 'number' || typeof f.y !== 'number') {
+            layout[k] = { x: startXmm, y: 12 + stepYmm * (idxStack++), font_pt: 12, align: 'left', auto: true };
+          } else {
+            const key = `${Math.round(f.x)}:${Math.round(f.y)}`;
+            if (taken.has(key)) {
+              layout[k].x = startXmm; layout[k].y = 12 + stepYmm * (idxStack++); layout[k].auto = true;
+            } else {
+              taken.add(key);
+              // Considerar ubicados todos los que ya tienen coordenadas guardadas
+              layout[k].auto = false;
+            }
+          }
+        });
+      }
+
+      // Fetch current layout or default positions
+      try {
+        const res = await fetch('/api/layout'); const data = await res.json(); layout = (data && data.fields) || {};
+      } catch { layout = {}; }
+      ensureFieldsCompleteness();
+
+      // Render draggable labels
+      function render() {
+        // Fit canvas height to image actual box height
+        const rect = bg.getBoundingClientRect(); canvas.style.height = rect.height + 'px';
+        // Remove previous
+        Array.from(canvas.querySelectorAll('.cal-field')).forEach(n => n.remove());
+        fields.forEach((k, i) => {
+          if (!visible[k]) return;
+          const f = layout[k]; const el = d.createElement('div'); el.className = 'cal-field' + (f && f.auto ? ' auto' : ''); el.textContent = k; el.dataset.key = k;
+          el.style.left = (mmToPx(f.x, 'x')) + 'px'; el.style.top = (mmToPx(f.y, 'y')) + 'px';
+          el.style.zIndex = String(10 + i);
+          canvas.appendChild(el);
+        });
+        renderPanel();
+      }
+
+      let drag = null;
+      canvas.addEventListener('pointerdown', (ev) => {
+        const target = ev.target.closest('.cal-field'); if (!target) return;
+        ev.preventDefault(); drag = { el: target, startX: ev.clientX, startY: ev.clientY, origLeft: parseFloat(target.style.left)||0, origTop: parseFloat(target.style.top)||0 };
+        target.setPointerCapture(ev.pointerId);
+      });
+      canvas.addEventListener('pointermove', (ev) => {
+        if (!drag) return; const dx = ev.clientX - drag.startX; const dy = ev.clientY - drag.startY; drag.el.style.left = (drag.origLeft + dx) + 'px'; drag.el.style.top = (drag.origTop + dy) + 'px';
+      });
+      canvas.addEventListener('pointerup', (ev) => {
+        if (!drag) return; const left = parseFloat(drag.el.style.left)||0; const top = parseFloat(drag.el.style.top)||0; const key = drag.el.dataset.key;
+        layout[key].x = +(pxToMm(left, 'x').toFixed(2)); layout[key].y = +(pxToMm(top, 'y').toFixed(2)); layout[key].auto = false;
+        // Actualizar visual inmediatamente
+        try { drag.el.classList.remove('auto'); } catch {}
+        const tmp = drag; drag = null; renderPanel(); render();
+      });
+
+      function renderPanel(){
+        const list = $('#fieldList'); if (!list) return; list.innerHTML = '';
+        let pending = 0;
+        fields.forEach((k)=>{
+          const f = layout[k] || {}; const isPending = !!f.auto; if (isPending) pending++;
+          const row = d.createElement('label');
+          const cb = d.createElement('input'); cb.type = 'checkbox'; cb.checked = !!visible[k];
+          cb.addEventListener('change', ()=>{ visible[k] = cb.checked; render(); });
+          const dot = d.createElement('span'); dot.className = 'status-dot ' + (isPending ? 'status-pending' : 'status-ok');
+          const span = d.createElement('span'); span.textContent = k;
+          row.appendChild(cb); row.appendChild(dot); row.appendChild(span); list.appendChild(row);
+        });
+        const badge = $('#pendingCount'); if (badge) badge.textContent = pending ? `${pending} pendientes` : '0 pendientes';
+      }
+
+      const btnShowAll = $('#btnShowAll');
+      const btnHideAll = $('#btnHideAll');
+      const btnStackVisible = $('#btnStackVisible');
+      const btnMarkPending = $('#btnMarkPending');
+      const btnClearCsv = $('#btnClearCsv');
+      if (btnShowAll) btnShowAll.onclick = ()=>{ fields.forEach(k=>visible[k]=true); renderPanel(); render(); };
+      if (btnHideAll) btnHideAll.onclick = ()=>{ fields.forEach(k=>visible[k]=false); renderPanel(); render(); };
+      if (btnStackVisible) btnStackVisible.onclick = ()=>{
+        const startXmm = 8; const stepYmm = 12; let idx=0;
+        fields.forEach(k=>{ if(!visible[k]) return; layout[k].x = startXmm; layout[k].y = 12 + stepYmm * (idx++); });
+        render();
+      };
+
+      if (btnMarkPending) btnMarkPending.onclick = ()=>{
+        const startXmm = 8; const stepYmm = 12; let idx=0;
+        fields.forEach(k=>{ layout[k] = { ...(layout[k]||{}), x: startXmm, y: 12 + stepYmm * (idx++), auto: true, align: (layout[k]&&layout[k].align)||'left', font_pt: (layout[k]&&layout[k].font_pt)||12 }; });
+        render();
+      };
+
+      if (btnClearCsv) btnClearCsv.onclick = async ()=>{
+        if (!confirm('Esto vaciará el CSV (solo cabecera). ¿Continuar?')) return;
+        try {
+          const resp = await fetch('/api/layout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fields: {} }) });
+          if (!resp.ok) { let e={}; try{e=await resp.json()}catch{} alert('No se pudo limpiar: '+(e.error||resp.status)); return; }
+          layout = {}; ensureFieldsCompleteness(); render();
+          alert('CSV limpiado. Reubica y guarda para establecer nuevas posiciones.');
+        } catch (e) { alert('Error: '+String(e && e.message ? e.message : e)); }
+      };
+
+      // Click-to-place support
+      const placeField = document.getElementById('placeField'); if (placeField){ placeField.innerHTML = fields.map(k=>`<option value="${k}">${k}</option>`).join(''); }
+      async function saveIfAuto(){
+        const autoSave = document.getElementById('autoSave'); if (!autoSave || !autoSave.checked) return;
+        try{
+          const fieldsToSave = {}; fields.forEach(k=>{ const f=layout[k]||{}; fieldsToSave[k] = { ...f, align: f.align || 'left' }; });
+          await fetch('/api/layout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fields: fieldsToSave }) });
+        }catch{}
+      }
+      canvas.addEventListener('click', async (ev)=>{
+        const pm = document.getElementById('placeMode'); if (!pm || !pm.checked) return;
+        if (!placeField || !placeField.value) return;
+        const rect = canvas.getBoundingClientRect();
+        const xpx = ev.clientX - rect.left; const ypx = ev.clientY - rect.top;
+        const snapEl = document.getElementById('snapMm'); const snap = Math.max(0, Number(snapEl && snapEl.value || 0));
+        let xmm = pxToMm(xpx, 'x'); let ymm = pxToMm(ypx, 'y');
+        if (snap>0){ xmm = Math.round(xmm/snap)*snap; ymm = Math.round(ymm/snap)*snap; }
+        const key = placeField.value;
+        layout[key] = { ...(layout[key]||{}), x:+xmm.toFixed(2), y:+ymm.toFixed(2), auto:false, align:(layout[key]&&layout[key].align)||'left', font_pt:(layout[key]&&layout[key].font_pt)||12 };
+        renderPanel(); render(); saveIfAuto();
+      });
+
+      window.addEventListener('resize', render);
+      requestAnimationFrame(()=>{ renderPanel(); render(); });
+
+      $('#btnReset').onclick = async () => {
+        try {
+          const res = await fetch('/api/layout');
+          const data = await res.json();
+          const f = (data && data.fields) || {};
+          if (Object.keys(f).length) { layout = f; ensureFieldsCompleteness(); render(); }
+        } catch {}
+      };
+      $('#btnSave').onclick = async () => {
+        try {
+          // Guardar con align 'left' por defecto para que X sea el borde izquierdo
+          const fieldsToSave = {}; fields.forEach(k=>{ const f=layout[k]||{}; fieldsToSave[k] = { ...f, align: f.align || 'left' }; });
+          const resp = await fetch('/api/layout', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ fields: fieldsToSave }) });
+          if (!resp.ok) { let e={}; try{e=await resp.json()}catch{} alert('No se pudo guardar: '+(e.error||resp.status)); return; }
+          alert('Layout guardado. Puedes generar PDFs normales para validar.');
+        } catch (e) { alert('Error: '+String(e && e.message ? e.message : e)); }
+      };
+    })();
+  </script>
+  <script>
+    // Extras de prueba: abrir PDFs desde el calibrador y asegurar persistencia
+    (function(){
+      const d = document;
+      function $(s){ return d.querySelector(s); }
+      async function ensureCert(num){
+        try{
+          let r = await fetch(`/api/certificados-by-numero?numero=${encodeURIComponent(num)}`);
+          if (!r.ok){
+            const body = { numero_forzado:num, proveedor_id:null, total_base:0, total_iva:0, total_abonado:0, lineas:[] };
+            const quick = await fetch('/api/certificados', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+            if (quick.ok) r = await fetch(`/api/certificados-by-numero?numero=${encodeURIComponent(num)}`);
+          }
+          const j = await r.json(); return j.id;
+        }catch(e){ alert('No se pudo asegurar certificado: '+String(e&&e.message?e.message:e)); throw e; }
+      }
+      function openTest(kind){ (async ()=>{
+        try{
+          const numStr = (d.getElementById('calCertNum') && d.getElementById('calCertNum').value || '').replace(/\D/g,'');
+          const num = parseInt(numStr,10); if (!Number.isFinite(num)||num<=0){ alert('Ingresá Nº de certificado'); return; }
+          const id = await ensureCert(num);
+          const noBg = ($('#calNoBg')&&$('#calNoBg').checked)?'1':'0';
+          const grid = ($('#calGrid')&&$('#calGrid').checked)?'layout-grid':'';
+          const offX = ($('#calOffX')&&$('#calOffX').value)||'0';
+          const offY = ($('#calOffY')&&$('#calOffY').value)||'0';
+          const sx = ($('#calSX')&&$('#calSX').value)||'1';
+          const sy = ($('#calSY')&&$('#calSY').value)||'1';
+          const base = kind==='pdflib'?`/api/certificados/${id}/pdf-lib`:`/api/certificados/${id}/pdf`;
+          const q = [`no_bg=${noBg}`, grid?`debug=${grid}`:'', `offset_x_mm=${offX}`, `offset_y_mm=${offY}`, `layout_scale_x=${sx}`, `layout_scale_y=${sy}`].filter(Boolean).join('&');
+          const href = `${base}?${q}`; const win = window.open(href,'_blank'); if(!win) window.location.href = href;
+        }catch(e){ /* handled */ }
+      })(); }
+      const b1 = $('#calViewPdfkit'); if (b1) b1.addEventListener('click', ()=>openTest('pdfkit'));
+      const b2 = $('#calViewPdflib'); if (b2) b2.addEventListener('click', ()=>openTest('pdflib'));
+
+      // Asegurar que, al cargar, los campos existentes queden como ubicados (auto=false)
+      try{
+        fetch('/api/layout').then(r=>r.json()).then(j=>{
+          if(!j||!j.fields) return;
+          const keys = Object.keys(j.fields);
+          keys.forEach(k=>{ if (j.fields[k]) j.fields[k].auto = false; });
+        });
+      }catch{}
+    })();
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Certificados Guardados</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">Volver al Certificado</a>
+      <a href="/static/proveedores.html">Gestionar Proveedores</a>
+    </nav>
+    <h1>Certificados Emitidos</h1>
+    <div class="theme-toggle">
+      <label>
+        <input type="checkbox" id="themeSwitch" />
+        <span>Modo oscuro</span>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="row">
+        <label>Proveedor</label>
+        <input id="certBuscar" type="text" placeholder="Filtrar por proveedor" />
+      </div>
+      <div class="row">
+        <label>Año</label>
+        <input id="certYear" type="number" min="1900" max="2100" placeholder="YYYY" />
+        <label>Mes</label>
+        <input id="certMonth" type="number" min="1" max="12" placeholder="MM" />
+      </div>
+      <div class="row">
+        <label>Por página</label>
+        <select id="certPageSize">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+      <div class="acciones">
+        <button id="certExportCsv" type="button">Exportar CSV</button>
+      </div>
+
+      <div id="certLista" class="prov-lista"></div>
+
+      <div class="paginacion">
+        <button id="certPrev" type="button">Anterior</button>
+        <span id="certPageInfo">Página 1</span>
+        <button id="certNext" type="button">Siguiente</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip" hidden></div>
+</body>
+</html>

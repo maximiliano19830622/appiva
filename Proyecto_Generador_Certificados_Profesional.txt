@@ -1,0 +1,168 @@
+Documento Técnico - App Generadora de Certificados de IVA
+
+Tecnologías
+
+- HTML
+
+- JavaScript
+
+- Node.js
+
+-Motor de base de datos: MySQL
+
+-Requisito técnico: La aplicación debe funcionar con una instancia de MySQL sin necesidad de instalar software adicional, salvo Node.js. Se asume que el servidor ya cuenta con MySQL instalado o accesible remotamente.
+
+-Motivo: Minimizar dependencias externas y facilitar la instalación en entornos controlados.
+
+UI/UX
+
+- Modo Oscuro y Modo Claro
+
+- Acceso multiusuario desde red local
+
+Arquitectura y Despliegue
+
+-Servidor principal: La aplicación se ejecutará en un servidor central con Node.js instalado. Este servidor alojará la lógica de negocio, la base de datos MySQL y los archivos necesarios para la generación de certificados.
+
+-Acceso desde terminales: Los usuarios accederán a la aplicación a través de navegadores web desde terminales conectadas a la misma red local. No se requiere instalación adicional en las terminales.
+
+-Requisitos de instalación:
+
+Node.js (único software externo requerido)
+
+MySQL (ya instalado o accesible en el entorno del servidor)
+
+No se deben instalar otros programas o dependencias externas en las terminales cliente
+
+- La aplicación debe incluir un mecanismo para iniciar el servidor Node.js automáticamente en el entorno del servidor.
+
+Tipo de script: archivo .bat para sistemas Windows.
+
+Función: ejecutar el servidor Node.js al encender el equipo o al ejecutar el script manualmente.
+
+Ubicación sugerida: carpeta raíz del proyecto, junto al archivo principal del servidor (por ejemplo, index.js).
+
+Estilo CSS
+
+- Diseño adaptable con temas claros y oscuros
+
+- La aplicación debe contar con un diseño visual claro, accesible y coherente. Se implementarán dos modos de visualización:
+
+Modo Claro
+
+Fondo: #F5F5F5
+
+Texto principal: #333333
+
+Campos de entrada: borde blanco, fondo blanco
+
+Botones: #2196F3
+
+Modo Oscuro
+
+Fondo: #121212
+
+Texto principal: #E0E0E0
+
+Campos de entrada: borde blanco, fondo blanco
+
+Botones: #3A7BD5
+
+Lógica de negocio
+
+- Generación de certificados PDF con fondo personalizado
+
+- Autoincremento de número de certificado
+
+- Calculadora de porcentajes con múltiples líneas
+
+Persistencia de datos
+
+- Base de datos para proveedores y certificados
+
+- Edición y eliminación de registros
+
+PDF y exportación
+
+- Generación de PDF en tamaño carta a 300dpi
+
+- Visualización y descarga de certificados
+
+Multiusuario
+
+- Sincronización de numeración de certificados entre usuarios
+
+- Evitar reutilización automática de certificados impresos
+
+Formularios
+
+- El formulario de generación de certificados debe incluir los siguientes campos y controles:
+
+Número de Certificado
+
+Campo visible con valor autoincremental.
+
+Debe incluir botones de incremento (+) y decremento (−) para modificarlo manualmente.
+
+Esta modificación manual es solo para casos específicos y no afecta la numeración automática ni se guarda como parte del historial.
+
+Fecha de Emisión del Certificado
+
+Selector de fecha
+
+Fecha de Emisión de la Factura
+
+Selector de fecha independiente
+
+Proveedor
+
+Campo con autocompletado desde la base de datos de proveedores
+
+Dirección del Proveedor
+
+Se autocompleta al seleccionar el proveedor
+
+Ciudad del Proveedor
+
+Se autocompleta al seleccionar el proveedor
+
+Montos
+
+Monto de Factura: suma de los montos ingresados en la calculadora
+
+Monto Abonado: resultado de la operación entre monto de factura y los porcentajes de    IVA
+
+Monto del IVA: suma de los valores calculados por la calculadora
+
+Formato numérico: todos los campos de montos deben utilizar la coma como separador decimal (ejemplo: 1.000,00)
+
+Validación: debe evitarse el ingreso de números negativos en cualquier campo de monto, tanto en el formulario como en la calculadora
+
+Validación en tiempo real: los campos deben validar el formato decimal y la positividad del número mientras el usuario escribe, no solo al enviar el formulario.
+
+Calculadora de IVA
+
+La aplicación debe incluir una calculadora que permita ingresar montos y porcentajes de IVA para realizar los siguientes cálculos:
+
+Ingreso de líneas múltiples: cada línea debe permitir ingresar un monto base y un porcentaje de IVA.
+
+Cálculo automático: el sistema debe calcular el monto de IVA correspondiente y mostrarlo junto al monto base.
+
+Suma total: debe mostrarse la suma total de todos los montos base, montos de IVA y monto abonado.
+
+Formato numérico: todos los campos deben utilizar la coma como separador decimal (ejemplo: 1.000,00).
+
+Validación en tiempo real: mientras el usuario escribe, se debe validar que:
+
+El formato decimal sea correcto (coma como separador).
+
+No se ingresen valores negativos.
+
+En caso de error, debe aparecer un tooltip junto al campo indicando el formato correcto, por ejemplo:
+
+⚠️ Formato inválido. Ingrese el monto como “1.000,00” y asegúrese de que no sea negativo.
+
+El tooltip debe desaparecer automáticamente una vez que el valor ingresado sea válido.
+
+El estilo del tooltip debe mantener coherencia visual con el modo claro/oscuro de la aplicación.
+

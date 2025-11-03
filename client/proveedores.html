@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proveedores</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script defer src="/static/app.js"></script>
+  <script defer src="/static/proveedores.js"></script>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">Volver al Certificado</a>
+    </nav>
+    <h1>Proveedores</h1>
+    <div class="theme-toggle">
+      <label>
+        <input type="checkbox" id="themeSwitch" />
+        <span>Modo oscuro</span>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <section class="proveedores">
+      <h2>Alta de Proveedores</h2>
+      <div class="row">
+        <label>Nombre o razón social</label>
+        <input id="provNombre" type="text" placeholder="" />
+      </div>
+      <div class="row">
+        <label>Dirección</label>
+        <input id="provDireccion" type="text" />
+      </div>
+      <div class="row">
+        <label>Ciudad</label>
+        <input id="provCiudad" type="text" />
+      </div>
+      <div class="row">
+        <label>CUIT</label>
+        <input id="provCuit" type="text" />
+      </div>
+      <div class="row">
+        <label>Código Postal</label>
+        <input id="provCodigoPostal" type="text" />
+        <button type="button" onclick="window.open('https://www.correoargentino.com.ar/formularios/cpa','_blank')">Buscar CP</button>
+      </div>
+      <div class="row">
+        <label>Teléfono</label>
+        <input id="provTelefono" type="text" />
+      </div>
+      <div class="row">
+        <label>Correo electrónico</label>
+        <input id="provCorreo" type="email" />
+      </div>
+      <div class="acciones">
+        <button id="provGuardar" type="button">Guardar Proveedor</button>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <label>Buscar</label>
+        <input id="provBuscar" type="text" placeholder="Filtrar por nombre" />
+      </div>
+
+      <div class="acciones">
+        <button id="provExportCsv" type="button">Exportar CSV</button>
+      </div>
+
+      <div id="provLista" class="prov-lista"></div>
+      <div class="paginacion">
+        <button id="provPrev" type="button">Anterior</button>
+        <span id="provPageInfo">Página 1</span>
+        <button id="provNext" type="button">Siguiente</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <label>Por página</label>
+        <select id="provPageSize">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+        </select>
+      </div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip" hidden></div>
+</body>
+</html>

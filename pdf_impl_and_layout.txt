@@ -1,0 +1,96 @@
+Resumen de implementación y layout (para compartir con otra IA)
+
+1) Librería y tamaño de página
+- Generador: pdfkit (Node.js).
+- Página: LETTER (8.5x11 in), orientación vertical, sin márgenes: `new PDFDocument({ size: 'LETTER', layout: 'portrait', margin: 0 })`.
+
+2) Carga de tipografía (doc.registerFont)
+function ensureFonts(doc) {
+  try {
+    const candidates = [
+      path.join(__dirname, 'assets', 'fonts', 'TimesNewRoman.ttf'),
+      path.join(__dirname, 'assets', 'fonts', 'Times New Roman.ttf'),
+      path.join(__dirname, 'assets', 'TimesNewRoman.ttf'),
+      path.join(__dirname, 'assets', 'Times New Roman.ttf'),
+      path.join(__dirname, 'assets', 'times.ttf'),
+      path.join(__dirname, 'assets', 'fonts', 'times.ttf'),
+      path.join(__dirname, 'assets', 'TimesNewRomanPSMT.ttf'),
+      path.join(__dirname, 'assets', 'fonts', 'TimesNewRomanPSMT.ttf')
+    ];
+    const fontPath = candidates.find(p => fs.existsSync(p));
+    if (fontPath) { doc.registerFont('TNR', fontPath); PRIMARY_FONT_FAMILY = 'TNR'; }
+    else { PRIMARY_FONT_FAMILY = 'Times-Roman'; }
+  } catch (_) { PRIMARY_FONT_FAMILY = 'Times-Roman'; }
+}
+
+3) Fondo (doc.image)
+const bgCandidates = [
+  path.join(__dirname, 'assets', 'background_letter.png'),
+  path.join(__dirname, 'assets', 'background_letter.jpg'),
+  path.join(__dirname, 'assets', 'background.png'),
+  path.join(__dirname, 'assets', 'background.jpg'),
+  path.join(__dirname, 'assets', 'background_a4.png')
+];
+const bgPath = bgCandidates.find(p => fs.existsSync(p));
+if (bgPath) {
+  try { doc.image(bgPath, 0, 0, { width: doc.page.width, height: doc.page.height }); } catch(_){}
+}
+
+4) Conversión de coordenadas y escritura de texto (doc.text)
+// CSV en milímetros. Si detecta valores grandes (px), escala con el tamaño real del fondo.
+// Además se pueden aplicar ajustes globales opcionales: offset_x_mm, offset_y_mm, layout_scale_x, layout_scale_y
+
+// Dentro de renderWithCsvLayout(...)
+// Selección de conversor convX/convY
+if (bgSize && likelyPx) {
+  convX = (v) => (Number(v)||0) * (doc.page.width / (bgSize.width || 1));
+  convY = (v) => (Number(v)||0) * (doc.page.height / (bgSize.height || 1));
+} else if (likelyPx) {
+  const pg = fullPageSize(doc); // equivalente a página completa
+  convX = (v) => (Number(v)||0) * (pg.width / (rawMaxX || 1));
+  convY = (v) => (Number(v)||0) * (pg.height / (rawMaxY || 1));
+} else {
+  convX = (v) => (Number(v)||0) * 72 / 25.4; // mm -> pt
+  convY = (v) => (Number(v)||0) * 72 / 25.4; // mm -> pt
+}
+
+// Ajustes globales
+const pt = (mm) => Number(mm) * 72 / 25.4;
+const offsetPtX = pt(Number(tplOpt.offsetXmm || 0));
+const offsetPtY = pt(Number(tplOpt.offsetYmm || 0));
+const sX = Number(tplOpt.layoutScaleX || 1) || 1;
+const sY = Number(tplOpt.layoutScaleY || 1) || 1;
+
+// Escritura de cada campo
+const writeField = (key, value) => {
+  const f = layout.fields[key]; if (!f) return;
+  const anchorX = offsetPtX + sX * convX(f.x);
+  const y = offsetPtY + sY * convY(f.y);
+  const size = 12; // fijo
+  const width = Number(f.width_pt || 0) > 0 ? Number(f.width_pt) : 240;
+  const align = (f.align || 'left');
+  const x = anchorX; // X es borde izquierdo del bloque
+  doc.font(PRIMARY_FONT_FAMILY).fontSize(size).text(String(value ?? ''), Math.max(0, x), y, { align, width });
+};
+
+5) CSV actual de campos (server/assets/layout_fields.csv)
+name,X (mm),Y (mm),font_pt,align,width_pt
+numero,"101,69","52,28",12,left,
+numero2,"158,19","82,18",12,left,
+fecha_cert,"8","36",12,left,
+numero_fact,"161,83","126,03",12,left,
+fecha_fact,"73,17","136,35",12,left,
+proveedor_nombre,"58,34","145,84",12,left,
+proveedor_direccion,"8","84",12,left,
+proveedor_ciudad,"8","96",12,left,
+proveedor_cuit,"58,06","155,27",12,left,
+proveedor_codigo_postal,"8","120",12,left,
+total_base,"8","132",12,left,
+total_abonado,"8","144",12,left,
+total_iva,"8","156",12,left,
+
+6) Endpoints/uso
+- Generar PDF: GET /api/certificados/:id/pdf
+- Depurar overlay: agregar `?debug=layout-grid`
+- Ajustar globalmente sin tocar CSV: `?offset_x_mm=...&offset_y_mm=...&layout_scale_x=...&layout_scale_y=...`
+

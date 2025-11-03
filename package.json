@@ -1,0 +1,19 @@
+﻿{
+    "name":  "generador-certificados-iva",
+    "version":  "0.1.0",
+    "private":  true,
+    "description":  "App local para generar certificados IVA con PDF A4 y SQLite",
+    "main":  "server/index.js",
+    "dependencies":  {
+                         "sql.js":  "^1.9.2",
+                         "cors":  "^2.8.5",
+                         "dotenv":  "^16.4.5",
+    "express":  "^4.19.2",
+    "pdfkit":  "^0.15.0",
+    "pdf-lib": "^1.17.1"
+                     },
+    "scripts":  {
+                    "start":  "node server/index.js",
+                    "layout:plain":  "python tools/dot_plain_to_csv.py layout.plain server/assets/layout_fields.csv"
+                }
+}

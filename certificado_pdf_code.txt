@@ -1,0 +1,259 @@
+// Código relevante para generar certificados (extracción de server/index.js)
+// Fecha: Nov 2025
+
+// ensureFonts
+let PRIMARY_FONT_FAMILY = 'Times-Roman';
+function ensureFonts(doc) {
+  try {
+    const candidates = [
+      path.join(__dirname, 'assets', 'fonts', 'TimesNewRoman.ttf'),
+      path.join(__dirname, 'assets', 'fonts', 'Times New Roman.ttf'),
+      path.join(__dirname, 'assets', 'TimesNewRoman.ttf'),
+      path.join(__dirname, 'assets', 'Times New Roman.ttf'),
+      path.join(__dirname, 'assets', 'times.ttf'),
+      path.join(__dirname, 'assets', 'fonts', 'times.ttf'),
+      path.join(__dirname, 'assets', 'TimesNewRomanPSMT.ttf'),
+      path.join(__dirname, 'assets', 'fonts', 'TimesNewRomanPSMT.ttf')
+    ];
+    const fontPath = candidates.find(p => fs.existsSync(p));
+    if (fontPath) { doc.registerFont('TNR', fontPath); PRIMARY_FONT_FAMILY = 'TNR'; }
+    else { PRIMARY_FONT_FAMILY = 'Times-Roman'; }
+  } catch (_) { PRIMARY_FONT_FAMILY = 'Times-Roman'; }
+}
+
+// getImagePixelSize
+function getImagePixelSize(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length > 24 && buf.readUInt32BE(0) === 0x89504E47) {
+      return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+    }
+    if (buf.length > 10 && buf[0] === 0xFF && buf[1] === 0xD8) {
+      let offset = 2;
+      while (offset + 9 < buf.length) {
+        if (buf[offset] !== 0xFF) { offset++; continue; }
+        const marker = buf[offset + 1];
+        if (marker >= 0xC0 && marker <= 0xC3) {
+          const height = buf.readUInt16BE(offset + 5);
+          const width = buf.readUInt16BE(offset + 7);
+          return { width, height };
+        }
+        const len = buf.readUInt16BE(offset + 2);
+        if (!len) break;
+        offset += 2 + len;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+// Ruta principal de PDF
+app.get('/api/certificados/:id/pdf', (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID inválido' });
+  const cert = db.prepare(`SELECT c.*, p.nombre as proveedor_nombre, p.direccion as proveedor_direccion, p.ciudad as proveedor_ciudad, p.cuit as proveedor_cuit, p.codigo_postal as proveedor_codigo_postal FROM certificados c JOIN proveedores p ON p.id=c.proveedor_id WHERE c.id=?`).get(id);
+  if (!cert) return res.status(404).json({ error: 'No encontrado' });
+
+  const asDownload = req.query.download === '1';
+  const debugMode = String(req.query.debug || '').toLowerCase();
+  try {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${asDownload ? 'attachment' : 'inline'}; filename=certificado_${cert.numero}.pdf`);
+
+    const doc = new PDFDocument({ size: 'LETTER', layout: 'portrait', margin: 0 });
+    ensureFonts(doc);
+    doc.pipe(res);
+
+    const bgCandidates = [
+      path.join(__dirname, 'assets', 'background_letter.png'),
+      path.join(__dirname, 'assets', 'background_letter.jpg'),
+      path.join(__dirname, 'assets', 'background.png'),
+      path.join(__dirname, 'assets', 'background.jpg'),
+      path.join(__dirname, 'assets', 'background_a4.png')
+    ];
+    const bgPath = bgCandidates.find(p => fs.existsSync(p));
+    if (bgPath) { try { doc.image(bgPath, 0, 0, { width: doc.page.width, height: doc.page.height }); } catch(_){} }
+
+    if (debugMode === 'layout-grid' || debugMode === 'grid') { try { drawGrid(doc, 10); } catch(_){} }
+    if (debugMode === 'layout' || debugMode === 'layout-grid') { try { renderCsvDebug(doc); } catch(e){ console.error('layout debug error', e); } }
+
+    const q = req.query || {};
+    const tplOpt = {
+      fontName: q.tpl_font,
+      monospace: /^(1|true|yes)$/i.test(String(q.tpl_monospace || '')),
+      fontPt: Number(q.tpl_font_pt || ''),
+      lineGapPt: Number(q.tpl_line_gap_pt || ''),
+      charSpacingPt: Number(q.tpl_char_spacing_pt || ''),
+      leftMm: Number(q.tpl_left_mm || ''),
+      topMm: Number(q.tpl_top_mm || ''),
+      tabSize: Number(q.tpl_tab_size || ''),
+      scaleX: Number(q.tpl_scale_x || ''),
+      scaleY: Number(q.tpl_scale_y || ''),
+      offsetXmm: Number(q.offset_x_mm || process.env.LAYOUT_OFFSET_X_MM || 0),
+      offsetYmm: Number(q.offset_y_mm || process.env.LAYOUT_OFFSET_Y_MM || 0),
+      layoutScaleX: (Number(q.layout_scale_x || process.env.LAYOUT_SCALE_X || 1) || 1),
+      layoutScaleY: (Number(q.layout_scale_y || process.env.LAYOUT_SCALE_Y || 1) || 1)
+    };
+
+    if (!renderWithCsvLayout(doc, cert, bgPath, tplOpt)) {
+      doc.font(PRIMARY_FONT_FAMILY).fontSize(12).text('Certificado', { align: 'right' });
+      doc.text(`Proveedor: ${cert.proveedor_nombre || ''}`);
+    }
+
+    doc.end();
+  } catch (e) {
+    console.error('Error generando PDF:', e);
+    try { res.removeHeader('Content-Type'); res.removeHeader('Content-Disposition'); } catch(_){}
+    res.status(500).json({ error: 'Error generando PDF', detail: String(e && e.message ? e.message : e) });
+  }
+});
+
+// Render con CSV (mm → pt) + ajustes globales opcionales
+function renderWithCsvLayout(doc, cert, bgPath, tplOpt) {
+  try {
+    const layout = loadCsvLayout();
+    if (!layout) return false;
+    const entries = Object.values(layout.fields || {});
+    const rawMaxX = entries.reduce((m,f)=> Math.max(m, Number(f && f.x || 0)), 0);
+    const rawMaxY = entries.reduce((m,f)=> Math.max(m, Number(f && f.y || 0)), 0);
+
+    let convX, convY;
+    let bgSize = null;
+    if (bgPath && fs.existsSync(bgPath)) { bgSize = getImagePixelSize(bgPath); }
+    const likelyPx = (rawMaxX > 1000 || rawMaxY > 1000);
+    if (bgSize && likelyPx) {
+      convX = (v) => (Number(v)||0) * (doc.page.width / (bgSize.width || 1));
+      convY = (v) => (Number(v)||0) * (doc.page.height / (bgSize.height || 1));
+    } else if (likelyPx) {
+      const pg = fullPageSize(doc);
+      convX = (v) => (Number(v)||0) * (pg.width / (rawMaxX || 1));
+      convY = (v) => (Number(v)||0) * (pg.height / (rawMaxY || 1));
+    } else {
+      convX = (v) => (Number(v)||0) * 72 / 25.4;
+      convY = (v) => (Number(v)||0) * 72 / 25.4;
+    }
+
+    const pt = (mm) => Number(mm) * 72 / 25.4;
+    const offsetPtX = pt(Number(tplOpt.offsetXmm || 0));
+    const offsetPtY = pt(Number(tplOpt.offsetYmm || 0));
+    const sX = Number(tplOpt.layoutScaleX || 1) || 1;
+    const sY = Number(tplOpt.layoutScaleY || 1) || 1;
+
+    const writeField = (key, value) => {
+      const f = layout.fields[key]; if (!f) return;
+      const anchorX = offsetPtX + sX * convX(f.x);
+      const y = offsetPtY + sY * convY(f.y);
+      const size = 12;
+      const width = Number(f.width_pt || 0) > 0 ? Number(f.width_pt) : 240;
+      const align = (f.align || 'left');
+      const x = anchorX;
+      doc.font(PRIMARY_FONT_FAMILY).fontSize(size).text(String(value ?? ''), Math.max(0, x), y, { align, width });
+    };
+    const tBase = Number(cert.total_base || 0); const tIva = Number(cert.total_iva || 0); const tAbonado = Math.max(0, tBase - tIva);
+    writeField('numero', cert.numero);
+    writeField('numero2', cert.numero);
+    writeField('fecha_cert', cert.fecha_cert || '');
+    writeField('numero_fact', cert.numero_fact || '');
+    writeField('numero_fact2', cert.numero_fact || '');
+    writeField('fecha_fact', cert.fecha_fact || '');
+    writeField('proveedor_nombre', cert.proveedor_nombre || '');
+    writeField('proveedor_direccion', cert.proveedor_direccion || '');
+    writeField('proveedor_ciudad', cert.proveedor_ciudad || '');
+    writeField('proveedor_cuit', cert.proveedor_cuit || '');
+    writeField('proveedor_codigo_postal', cert.proveedor_codigo_postal || '');
+    writeField('total_base', tBase.toFixed(2));
+    writeField('total_abonado', tAbonado.toFixed(2));
+    writeField('total_iva', tIva.toFixed(2));
+    return true;
+  } catch (e) { console.error('CSV layout error', e); return false; }
+}
+
+// loadCsvLayout
+let _csvLayoutCache = null; let _csvLayoutMtime = 0;
+function loadCsvLayout() {
+  const candidates = [
+    path.join(__dirname, 'assets', 'layout_fields.csv'),
+    path.join(__dirname, '..', 'coordenadas.csv'),
+    path.join(process.cwd(), 'coordenadas.csv')
+  ];
+  let filePath = null; for (const p of candidates) { if (fs.existsSync(p)) { filePath = p; break; } }
+  if (!filePath) return null;
+  const stat = fs.statSync(filePath); if (_csvLayoutCache && stat.mtimeMs === _csvLayoutMtime) return _csvLayoutCache;
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const lines = raw.split(/\r?\n/).filter(l => l.trim().length > 0);
+  if (lines.length <= 1) return null;
+  const header = lines[0].split(',');
+  const idxX = header.findIndex(h => /x/i.test(h)); const idxY = header.findIndex(h => /y/i.test(h));
+  const idxName = header.findIndex(h => /name/i.test(h)); const idxFont = header.findIndex(h => /font/i.test(h));
+  const idxAlign = header.findIndex(h => /align|aline/i.test(h));
+  const normalize = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  const mapKey = (n) => { const k = normalize(n);
+    if (/(^|_)numero2(_|$)/.test(k)) return 'numero2';
+    if (/(^|_)numero(_|$)/.test(k)) return 'numero';
+    if (k.includes('numero_fact2') || k.endsWith('numerofact2')) return 'numero_fact2';
+    if (k.includes('numero_fact')) return 'numero_fact';
+    if (k.includes('fecha_cert')) return 'fecha_cert';
+    if (k.includes('fecha_fact')) return 'fecha_fact';
+    if (k.includes('proveedor_nombre')) return 'proveedor_nombre';
+    if (k.includes('proveedor_direccion')) return 'proveedor_direccion';
+    if (k.includes('proveedor_ciudad')) return 'proveedor_ciudad';
+    if (k.includes('proveedor_cuit') || k === 'cuit') return 'proveedor_cuit';
+    if (k.includes('codigo_postal') || k.includes('proveedor_cp') || k === 'cp') return 'proveedor_codigo_postal';
+    if (k.replace(/_/g,'') === 'montodelafactura' || k.includes('monto_de_factura') || k.includes('monto_factura')) return 'total_base';
+    if (k.replace(/_/g,'') === 'montoabonado') return 'total_abonado';
+    if (k === 'iva') return 'total_iva';
+    return null; };
+  const parseNum = (v) => { const s = String(v||'').trim().replace(/\"/g,'').replace(/\./g,'').replace(',', '.'); const n = Number(s); return isNaN(n)? undefined : n; };
+  const fields = {};
+  for (let i=1;i<lines.length;i++) {
+    const row = lines[i].split(','); if (!row[idxName]) continue; const key = mapKey(row[idxName]); if (!key) continue;
+    const x = parseNum(row[idxX]); const y = parseNum(row[idxY]); if (x==null || y==null) continue;
+    const fstr = row[idxFont] || ''; const fsize = Number(String(fstr).match(/(\d+(?:\.\d+)?)/)?.[1] || '12');
+    const alignRaw = String(row[idxAlign] || '').toLowerCase();
+    const align = /der/.test(alignRaw) ? 'right' : (/cent/.test(alignRaw) ? 'center' : 'left');
+    fields[key] = { x, y, font_pt: fsize, align: align || 'left', units: 'mm' };
+  }
+  _csvLayoutCache = { fields }; _csvLayoutMtime = stat.mtimeMs; return _csvLayoutCache;
+}
+
+// Debug helpers
+function renderCsvDebug(doc) {
+  const layout = loadCsvLayout(); if (!layout) return;
+  const entries = Object.values(layout.fields || {});
+  const rawMaxX = entries.reduce((m,f)=> Math.max(m, Number(f && f.x || 0)), 0);
+  const rawMaxY = entries.reduce((m,f)=> Math.max(m, Number(f && f.y || 0)), 0);
+  const useScaledSpace = (rawMaxX > 1000 || rawMaxY > 1000);
+  const convX = (v) => { const n = Number(v)||0; return useScaledSpace ? (n * (doc.page.width / (rawMaxX || 1))) : (n * 72 / 25.4); };
+  const convY = (v) => { const n = Number(v)||0; return useScaledSpace ? (n * (doc.page.height / (rawMaxY || 1))) : (n * 72 / 25.4); };
+  const keys = Object.keys(layout.fields);
+  doc.save();
+  keys.forEach((k) => {
+    const f = layout.fields[k]; if (!f) return;
+    const x = convX(f.x); const y = convY(f.y);
+    try {
+      doc.lineWidth(0.5).strokeColor('#FF5555').fillColor('#FF5555');
+      doc.circle(x, y, 2).fill();
+      const label = String(k);
+      const size = Math.max(8, Math.min(12, Number(f.font_pt || 12)));
+      doc.fontSize(size).fillColor('#FF0000');
+      doc.text(label, x + 4, y - size - 2, { width: 200, continued: false });
+      doc.strokeColor('#FF9999').lineWidth(0.5).rect(x - 2, y - size - 4, 220, size + 8).stroke();
+    } catch(_){}
+  });
+  doc.restore();
+}
+
+function drawGrid(doc, stepMm = 10) {
+  const pt = (mm) => Number(mm) * 72 / 25.4;
+  const step = pt(stepMm);
+  const w = doc.page.width; const h = doc.page.height;
+  doc.save();
+  doc.lineWidth(0.2).strokeColor('#CCCCCC');
+  for (let x = 0; x <= w; x += step) { doc.moveTo(x, 0).lineTo(x, h).stroke(); }
+  for (let y = 0; y <= h; y += step) { doc.moveTo(0, y).lineTo(w, y).stroke(); }
+  doc.lineWidth(0.8).strokeColor('#AAAAAA');
+  doc.moveTo(0, 0).lineTo(w, 0).stroke();
+  doc.moveTo(0, 0).lineTo(0, h).stroke();
+  doc.restore();
+}
+

@@ -1,0 +1,51 @@
+      };
+    })();
+  </script>
+  <script>
+    // Extras de prueba: abrir PDFs desde el calibrador y asegurar persistencia
+    (function(){
+      const d = document;
+      function $(s){ return d.querySelector(s); }
+      async function ensureCert(num){
+        try{
+          let r = await fetch(`/api/certificados-by-numero?numero=${encodeURIComponent(num)}`);
+          if (!r.ok){
+            const body = { numero_forzado:num, proveedor_id:null, total_base:0, total_iva:0, total_abonado:0, lineas:[] };
+            const quick = await fetch('/api/certificados', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+            if (quick.ok) r = await fetch(`/api/certificados-by-numero?numero=${encodeURIComponent(num)}`);
+          }
+          const j = await r.json(); return j.id;
+        }catch(e){ alert('No se pudo asegurar certificado: '+String(e&&e.message?e.message:e)); throw e; }
+      }
+      function openTest(kind){ (async ()=>{
+        try{
+          const numStr = (d.getElementById('calCertNum') && d.getElementById('calCertNum').value || '').replace(/\D/g,'');
+          const num = parseInt(numStr,10); if (!Number.isFinite(num)||num<=0){ alert('Ingresá Nº de certificado'); return; }
+          const id = await ensureCert(num);
+          const noBg = ($('#calNoBg')&&$('#calNoBg').checked)?'1':'0';
+          const grid = ($('#calGrid')&&$('#calGrid').checked)?'layout-grid':'';
+          const offX = ($('#calOffX')&&$('#calOffX').value)||'0';
+          const offY = ($('#calOffY')&&$('#calOffY').value)||'0';
+          const sx = ($('#calSX')&&$('#calSX').value)||'1';
+          const sy = ($('#calSY')&&$('#calSY').value)||'1';
+          const base = kind==='pdflib'?`/api/certificados/${id}/pdf-lib`:`/api/certificados/${id}/pdf`;
+          const q = [`no_bg=${noBg}`, grid?`debug=${grid}`:'', `offset_x_mm=${offX}`, `offset_y_mm=${offY}`, `layout_scale_x=${sx}`, `layout_scale_y=${sy}`].filter(Boolean).join('&');
+          const href = `${base}?${q}`; const win = window.open(href,'_blank'); if(!win) window.location.href = href;
+        }catch(e){ /* handled */ }
+      })(); }
+      const b1 = $('#calViewPdfkit'); if (b1) b1.addEventListener('click', ()=>openTest('pdfkit'));
+      const b2 = $('#calViewPdflib'); if (b2) b2.addEventListener('click', ()=>openTest('pdflib'));
+
+      // Asegurar que, al cargar, los campos existentes queden como ubicados (auto=false)
+      try{
+        fetch('/api/layout').then(r=>r.json()).then(j=>{
+          if(!j||!j.fields) return;
+          const keys = Object.keys(j.fields);
+          keys.forEach(k=>{ if (j.fields[k]) j.fields[k].auto = false; });
+        });
+      }catch{}
+    })();
+  </script>
+</body>
+</html>
+

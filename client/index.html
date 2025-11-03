@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generador de Certificados IVA</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script defer src="/static/app.js"></script>
+  <script defer src="/static/debug_layout.js"></script>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/static/proveedores.html">Gestionar Proveedores</a>
+      <a href="/static/certificados.html">Certificados Emitidos</a>
+      <a href="/static/layout.html">Calibrar Layout</a>
+    </nav>
+    <h1>Generador de Certificados IVA</h1>
+    <div class="theme-toggle">
+      <label>
+        <input type="checkbox" id="themeSwitch" />
+        <span>Modo oscuro</span>
+      </label>
+    </div>
+  </header>
+
+  <main>
+    <section class="form">
+      <div class="row">
+        <label>Número de Certificado</label>
+        <div class="num-control">
+          <button type="button" id="numDec">-</button>
+          <input id="numero" type="text" value="" />
+          <button type="button" id="numInc">+</button>
+        </div>
+      </div>
+      <div class="row">
+        <label>Fecha de Emisión del Certificado</label>
+        <input id="fecha_cert" type="date" />
+      </div>
+      <div class="row">
+        <label>Fecha de Emisión de la Factura</label>
+        <input id="fecha_fact" type="date" />
+      </div>
+      <div class="row">
+        <label>Número de Factura</label>
+        <input id="numero_fact" type="text" />
+      </div>
+      <div class="row">
+        <label>Proveedor</label>
+        <div class="input-suggest">
+          <input id="proveedor" type="text" placeholder="Buscar proveedor..." autocomplete="off" />
+          <div id="proveedorSugerencias" class="suggestions"></div>
+        </div>
+      </div>
+      <div class="row">
+        <label>Dirección</label>
+        <input id="direccion" type="text" />
+      </div>
+      <div class="row">
+        <label>Ciudad</label>
+        <input id="ciudad" type="text" />
+      </div>
+      <div class="row">
+        <label>CUIT</label>
+        <input id="cuit" type="text" />
+      </div>
+      <div class="row">
+        <label>Código Postal</label>
+        <input id="codigo_postal" type="text" />
+      </div>
+
+      <h2>Calculadora de IVA</h2>
+      <div id="lineas" class="lineas"></div>
+      <button id="addLinea" type="button">Agregar línea</button>
+
+      <div class="totales">
+        <div><strong>Monto de Factura (Base):</strong> <span id="totalBase">0,00</span></div>
+        <div><strong>Monto del IVA:</strong> <span id="totalIva">0,00</span></div>
+        <div><strong>Monto Abonado:</strong> <span id="totalAbonado">0,00</span></div>
+      </div>
+
+      <div class="acciones">
+        <button id="nuevoCertificado" type="button">Nuevo Certificado</button>
+        <button id="generarPdf" type="button">Generar PDF</button>
+        <button id="verPdfInline" type="button">Ver Certificado</button>
+        <label style="margin-left:12px; display:flex; align-items:center; gap:8px; font-size:16px;">
+          <input type="checkbox" id="debugLayout" />
+          <span>Debug layout</span>
+        </label>
+      </div>
+    </section>
+
+    
+  </main>
+  <footer class="app-footer">Generador Certificados IVA - Version 1.0 - Noviembre 2025</footer>
+  
+  <div id="tooltip" class="tooltip" hidden></div>
+</body>
+</html>
